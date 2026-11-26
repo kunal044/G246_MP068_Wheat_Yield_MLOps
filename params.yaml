@@ -1,0 +1,46 @@
+# Project configuration
+group_id: G246
+problem_id: MP068
+
+# Dataset paths
+data:
+  train: data/raw/train.csv
+  later: data/raw/later.csv
+  holdout: data/raw/holdout_features.csv
+  cleaned_train: data/processed/train_cleaned.csv
+
+# Data cleaning settings
+cleaning:
+  leakage_column: yield_from_mandi_receipt
+  sentinel_column: farm_acres
+  sentinel_value: 999
+  target_typo_threshold: 100
+  target_correction_factor: 10
+
+# Machine learning settings
+model:
+  target: yield_qtl_per_acre
+  random_state: 42
+  test_size: 0.2
+
+  numeric_features:
+    - rainfall_mm
+    - fertilizer_kg
+    - sowing_delay_days
+    - irrigation_count
+    - soil_ph
+    - farm_acres
+
+  categorical_features:
+    - seed_variety
+    - tehsil
+
+# MLflow configuration
+mlflow:
+  tracking_uri: sqlite:///mlflow.db
+  experiment_name: MP068_Wheat_Yield
+  registered_model_name: MP068_Wheat_Yield_Model
+
+# Champion model storage
+artifacts:
+  model_path: models/model.joblib
