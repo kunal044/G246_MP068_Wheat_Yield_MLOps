@@ -33,21 +33,21 @@ tracking:
   experiment_name: MP068_Wheat_Yield
   best_run_id: 96e9463c36bd467e87c9ae8c0117f150
   registered_model_name: MP068_Wheat_Yield_Model
-  champion_version: 1
+  champion_version: 2
 monitoring:
   psi:
-    rainfall_mm: null
-    fertilizer_kg: null
-    sowing_delay_days: null
-    irrigation_count: null
-    soil_ph: null
-    farm_acres: null
-  most_drifted_feature: null
+    rainfall_mm: 0.030326348061244297
+    fertilizer_kg: 0.061709879852034584
+    sowing_delay_days: 5.057078953808402
+    irrigation_count: 0.06849737542699222
+    soil_ph: 0.020680636587085112
+    farm_acres: 0.05329690279992776
+  most_drifted_feature: sowing_delay_days
   mae_by_group:
-    Tehsil North: null
-    Tehsil South: null
-    Tehsil West: null
-  worst_served_group: null
-  mae_v1_on_check: null
-  mae_v2_on_check: null
-  decision: null
+    Tehsil West: 2.657639454946978
+    Tehsil South: 1.2347325205838384
+    Tehsil North: 0.998952089071071
+  worst_served_group: Tehsil West
+  mae_v1_on_check: 1.184309441703331
+  mae_v2_on_check: 1.042906793673937
+  decision: promote

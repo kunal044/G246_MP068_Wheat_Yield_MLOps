@@ -67,7 +67,7 @@ def test_prediction_log(monkeypatch):
     assert event["event"] == "prediction"
 
     assert type(event["model_version"]) is int
-    assert event["model_version"] == 1
+    assert event["model_version"] == 2
 
     assert type(event["prediction"]) is float
     assert math.isfinite(event["prediction"])

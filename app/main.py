@@ -19,7 +19,7 @@ model = joblib.load(ROOT / "models" / "model.joblib")
 
 
 # Current deployed model version
-MODEL_VERSION = 1
+MODEL_VERSION = 2
 
 
 # Initialize structured JSON prediction logger

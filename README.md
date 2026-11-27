@@ -2,7 +2,7 @@
 
 This SCSE3040 MLOps mini project predicts wheat yield for the fictional Nagpur Kisan Producer Company. The estimate helps the company plan storage and transport before harvest. The regression target is `yield_qtl_per_acre`, measured in quintals per acre. We compare models by validation mean absolute error (MAE), in the same units.
 
-**Stage 3 serving model** · Linear Regression, validation MAE **0.750357**, MLflow model version **1**.
+**Serving champion** · Linear Regression, MLflow model version **2**. V2 reduced MAE by **11.94%** compared with V1 on the final 90 later records.
 
 ## Group and team
 
@@ -21,11 +21,12 @@ This SCSE3040 MLOps mini project predicts wheat yield for the fictional Nagpur K
 
 | Path | Purpose |
 |---|---|
-| `src/wheat_yield/` | Dataset analysis, cleaning, and training pipeline helpers |
+| `src/wheat_yield/` | Dataset analysis, cleaning, training pipeline helpers, and PSI monitoring |
 | `params.yaml`, `requirements.txt` | Project configuration and pinned dependencies |
 | `.dvc/`, `data/raw/*.dvc` | DVC configuration and original dataset pointers |
 | `data/raw/holdout_features.csv` | Assignment-provided holdout features |
 | `reports/findings.yaml` | Data quality findings and tracking references |
+| `predictions/holdout_predictions.csv` | Final predictions for the 250 assignment holdout rows |
 | `mlflow.db`, `models/model.joblib` | MLflow run and registry metadata, and the serialized serving pipeline |
 | `app/`, `tests/` | FastAPI application, JSON logger, and automated tests |
 | `Dockerfile`, `.dockerignore` | Container build and context exclusions |
@@ -75,13 +76,47 @@ The three completed runs in `MP068_Wheat_Yield` recorded the original training f
 | Gradient Boosting | 0.892677 |
 | Random Forest | 1.174861 |
 
-Linear Regression had the lowest validation MAE. Its run ID is `96e9463c36bd467e87c9ae8c0117f150`. The registry model is `MP068_Wheat_Yield_Model`, version **1**, with alias `champion`. FastAPI loads the checked-in `models/model.joblib` at startup, so serving needs no running MLflow server.
+Linear Regression had the lowest initial validation MAE. Its run ID, `96e9463c36bd467e87c9ae8c0117f150`, remains the original `best_run_id`. The registry model `MP068_Wheat_Yield_Model` contains versions **1** and **2**, and its `champion` alias points to **2**. The fourth run, `84c6e7fa7e9840418f22b64f7e3ef409`, records the retraining results. All four runs logged the original training file’s SHA-256. FastAPI serves the V2 joblib without an MLflow server.
 
 To inspect the tracking records locally:
 
 ```powershell
 .\.venv\Scripts\mlflow.exe ui --backend-store-uri sqlite:///mlflow.db
 ```
+
+## Later-data monitoring and retraining
+
+Population Stability Index (PSI) compares the cleaned original training data with all 300 later observations. The implementation uses ten equal-width bins based on the training range, extends the outer bins to include out-of-range values, drops missing observations, and floors empty-bin proportions at `1e-6`.
+
+| Feature | PSI |
+|---|---:|
+| `rainfall_mm` | 0.030326348061244297 |
+| `fertilizer_kg` | 0.061709879852034584 |
+| `sowing_delay_days` | **5.057078953808402** |
+| `irrigation_count` | 0.06849737542699222 |
+| `soil_ph` | 0.020680636587085112 |
+| `farm_acres` | 0.05329690279992776 |
+
+`sowing_delay_days` had the highest PSI. V1 was evaluated separately by tehsil on all 300 later records.
+
+| Tehsil | V1 MAE |
+|---|---:|
+| Tehsil West | **2.657639454946978** |
+| Tehsil South | 1.2347325205838384 |
+| Tehsil North | 0.998952089071071 |
+
+Tehsil West had the highest error. For retraining, the later records were stably sorted by date. The first 210 were appended to the 1,000 cleaned original rows, giving V2 1,210 training rows. The last 90 records were reserved for the same comparison of both models. The split shares a calendar date at the boundary, with disjoint record IDs. The fitted pipeline uses only the eight API inputs and excludes `yield_from_mandi_receipt`.
+
+| Model | MAE on the same 90 records |
+|---|---:|
+| V1 | 1.184309441703331 |
+| V2 | 1.042906793673937 |
+
+The relative reduction was **11.939670752436292%**, exceeding the **8%** promotion threshold. V2 became the registry champion and the deployed artifact.
+
+## Holdout predictions
+
+[The prediction CSV](predictions/holdout_predictions.csv) contains exactly 250 rows and the columns `record_id,prediction`. Its IDs are unique and match the input features in their original order. All predictions are finite and match the deployed V2 pipeline. The assignment withholds the true targets, so holdout MAE is unavailable.
 
 ## Run and use the API
 
@@ -116,10 +151,10 @@ Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8000/predict' `
     -ContentType 'application/json' -Body ($sample | ConvertTo-Json)
 ```
 
-The synthetic request returned the following response in both live checks:
+The synthetic request returned the following response in a local V2 API check:
 
 ```json
-{"prediction":22.023605759252384}
+{"prediction":22.087700140987245}
 ```
 
 To reproduce a validation error, set `$sample.sowing_delay_days = 66` and repeat the POST. To check farm size separately, restore the delay to 15 and set `$sample.farm_acres = -1`. Both checks return HTTP 422.
@@ -128,11 +163,10 @@ To reproduce a validation error, set `$sample.sowing_delay_days = 66` and repeat
 
 [app/logger.py](app/logger.py) uses Python’s standard logging module and a custom JSON formatter. Each successful prediction emits one line to stdout with an event name, the version of the deployed model, the returned prediction, and the inference latency in milliseconds measured with `perf_counter()`. The prediction logger omits request fields. Requests rejected by validation do not emit prediction events.
 
-Two live requests returned HTTP 200 with the same prediction. Each emitted one JSON line. The observed latencies below are rounded to two decimal places.
+A local V2 request returned HTTP 200 and emitted this JSON event. Latency varies by request.
 
 ```jsonl
-{"event":"prediction","model_version":1,"prediction":22.023605759252384,"latency_ms":124.72}
-{"event":"prediction","model_version":1,"prediction":22.023605759252384,"latency_ms":20.18}
+{"event":"prediction","model_version":2,"prediction":22.087700140987245,"latency_ms":64.98139999985142}
 ```
 
 ## Automated tests
@@ -141,7 +175,7 @@ Two live requests returned HTTP 200 with the same prediction. Each emitted one J
 .\.venv\Scripts\python.exe -m pytest tests/ -v
 ```
 
-The Stage 3 local run reported **13 passed in 6.79 seconds**.
+The final local V2 audit reported **13 passed in 6.01 seconds** with one Starlette test-client deprecation warning.
 
 | Suite | Passed | Coverage |
 |---|---:|---|
@@ -164,7 +198,7 @@ The image uses `python:3.12-slim` and starts Uvicorn on `0.0.0.0:8000`. It inclu
 
 The [CI workflow](.github/workflows/ci.yml) runs on push and pull requests. It installs pinned dependencies under Python 3.12 and runs pytest. The Docker job then builds `mp068-api:1.0`, starts it with port 8000 published, and probes `/health` with bounded retries. It checks for container exit and prints container state and logs on failure.
 
-The Python job, Docker build, and container health check passed for commit `266c521`. That run predates the local structured logging integration. [Verified GitHub Actions run 45940654597](https://github.com/kunal044/G246_MP068_Wheat_Yield_MLOps/actions/runs/45940654597)
+The Stage 3 run passed for commit `6677a30`. Verify the Stage 4 commit in Actions after pushing it. [Verified GitHub Actions run 45942848963](https://github.com/kunal044/G246_MP068_Wheat_Yield_MLOps/actions/runs/45942848963)
 
 ## Kubernetes
 
@@ -177,4 +211,5 @@ Both probes call `/health` on port 8000. Readiness begins after **5 seconds** an
 - The committed `train.py` contains reusable helpers for preprocessing, data splitting, and hashing. Reproducing the original training run from a fresh clone still requires the group’s original CSVs and a driver that runs cleaning, fitting, evaluation, and MLflow logging.
 - The tracked MLflow database preserves run and registry metadata. Local artifact URIs may be machine-specific. The tracked joblib supports serving from a fresh clone.
 - Kubernetes verification covered manifest syntax and consistency. Deploying to a cluster also requires the image to be available to its nodes.
-- The two local latency observations describe those requests only. Stage 3 verification covers serving, testing, packaging, deployment configuration, and prediction logging.
+- The monitoring module exposes reusable PSI functions. The end-to-end retraining and export were performed in a local notebook. Reproduction requires an explicit V1 input, separate tracking and output paths, and a driver for the chronological split, evaluation, and export. The graded notebook cells assume a V1-only registry and are unsuitable for rerunning against the completed registry.
+- The PSI binning convention could not be checked against the P13 lab materials.
