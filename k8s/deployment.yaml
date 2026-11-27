@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: mp068-api
+
+spec:
+  # Maintain three API replicas
+  replicas: 3
+
+  selector:
+    matchLabels:
+      app: mp068-api
+
+  template:
+    metadata:
+      labels:
+        app: mp068-api
+
+    spec:
+      containers:
+        - name: api
+          image: mp068-api:1.0
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 8000
+
+          # Check whether the pod can receive traffic
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+          # Restart unhealthy containers
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+
+            

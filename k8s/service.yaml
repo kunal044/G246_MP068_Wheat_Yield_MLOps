@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: mp068-svc
+
+spec:
+  # Select the API pods
+  selector:
+    app: mp068-api
+
+  type: ClusterIP
+
+  # Forward traffic to FastAPI
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
