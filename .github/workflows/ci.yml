@@ -47,17 +47,49 @@ jobs:
       - name: Build Docker image
         run: docker build -t mp068-api:1.0 .
 
-      # Start container
+      # Start the Docker container
       - name: Start container
         run: docker run -d --name mp068-api -p 8000:8000 mp068-api:1.0
 
-      # Verify container health endpoint
+      # Wait for FastAPI and the model to initialize
       - name: Test container health
+        timeout-minutes: 3
         run: |
-          curl --fail --retry 15 --retry-connrefused --retry-delay 2 http://localhost:8000/health
+          for i in {1..30}; do
+            echo "Health check attempt $i/30"
 
-      # Display container logs
+            # Verify that the container is still running
+            if [ "$(docker inspect --format '{{.State.Running}}' mp068-api)" != "true" ]; then
+              echo "Container stopped unexpectedly"
+              exit 1
+            fi
+
+            # Retry failed HTTP requests
+            if curl --fail --silent --show-error --connect-timeout 1 --max-time 3 http://127.0.0.1:8000/health; then
+              echo ""
+              echo "Container is healthy!"
+              exit 0
+            fi
+
+            # Wait before the next attempt
+            if [ "$i" -lt 30 ]; then
+              sleep 2
+            fi
+          done
+
+          # Fail the workflow if the API remains unhealthy
+          echo "Health check failed after 30 attempts"
+          exit 1
+
+      # Print diagnostic information on failure
       - name: Display Docker logs
-        if: always()
-        run: docker logs mp068-api || true
-        
+        if: failure()
+        run: |
+          echo "Container status:"
+          docker ps -a
+
+          echo "Container state:"
+          docker inspect --format '{{json .State}}' mp068-api || true
+
+          echo "Container logs:"
+          docker logs mp068-api || true
